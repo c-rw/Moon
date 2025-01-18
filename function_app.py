@@ -50,7 +50,7 @@ def moon(req: func.HttpRequest) -> func.HttpResponse:
         ],
         'altitude': str(moon.alt),  # Height above horizon in radians
         'azimuth': str(moon.az),    # Position along horizon in radians
-        'distance': f"{moon.earth_distance:.1f} AU",
+        'distance': f"{moon.earth_distance * 149597870.691:.0f} km",  # Converting AU to kilometers
         'constellation': ephem.constellation(moon)[1],
         'observer': {
             'latitude': lat,
