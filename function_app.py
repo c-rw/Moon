@@ -31,23 +31,23 @@ def moon(req: func.HttpRequest) -> func.HttpResponse:
     # Calculate moon information
     moon.compute(observer)
     
-    # Calculate next four moon phases
-    next_phases = []
-    current_date = ephem.Date(datetime.utcnow())
-    
-    for phase in [ephem.next_new_moon, ephem.next_first_quarter,
-                 ephem.next_full_moon, ephem.next_last_quarter]:
-        next_date = phase(current_date)
-        phase_name = phase.__name__.replace('next_', '').replace('_', ' ').title()
-        next_phases.append({
-            'phase': phase_name,
-            'date': ephem.Date(next_date).datetime().strftime('%Y-%m-%d %H:%M:%S UTC')
-        })
+    # Calculate next moon phase
+    next_new = ephem.next_new_moon(observer.date)
+    next_full = ephem.next_full_moon(observer.date)
     
     # Prepare response data
     moon_data = {
         'current_phase': moon.phase,  # Phase as percentage illuminated
-        'next_phases': next_phases,
+        'next_phases': [
+            {
+                'phase': 'New Moon',
+                'date': ephem.Date(next_new).datetime().strftime('%Y-%m-%d %H:%M:%S UTC')
+            },
+            {
+                'phase': 'Full Moon',
+                'date': ephem.Date(next_full).datetime().strftime('%Y-%m-%d %H:%M:%S UTC')
+            }
+        ],
         'altitude': str(moon.alt),  # Height above horizon in radians
         'azimuth': str(moon.az),    # Position along horizon in radians
         'distance': f"{moon.earth_distance:.1f} AU",
