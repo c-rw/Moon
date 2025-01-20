@@ -22,9 +22,9 @@ def moon(req: func.HttpRequest) -> func.HttpResponse:
         req_body = {}
         has_location = False
     
-    # Set observer location (defaults to Greenwich if not provided)
-    lat = req_body.get('latitude', '51.4769')  # Greenwich latitude
-    lon = req_body.get('longitude', '0.0005')  # Greenwich longitude
+    # Set observer location (defaults to Mauna Kea if not provided)
+    lat = req_body.get('latitude', '19.8207')  # Mauna Kea latitude
+    lon = req_body.get('longitude', '155.4681')  # Mauna Kea longitude
     
     observer.lat = str(lat)
     observer.lon = str(lon)
