@@ -1,7 +1,7 @@
 import azure.functions as func
 import logging
 import ephem
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import json
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -17,21 +17,34 @@ def moon(req: func.HttpRequest) -> func.HttpResponse:
     # Get optional location parameters
     try:
         req_body = req.get_json()
+        # Validate latitude and longitude
+        lat = req_body.get('latitude')
+        lon = req_body.get('longitude')
+        if not (isinstance(lat, (int, float, str)) and isinstance(lon, (int, float, str))):
+            raise ValueError("Latitude and longitude must be numbers.")
+        lat = float(lat)
+        lon = float(lon)
         has_location = True
-    except ValueError:
+    except (ValueError, TypeError):
         req_body = {}
         has_location = False
+        lat = 19.8207  # Default latitude for Mauna Kea
+        lon = 155.4681  # Default longitude for Mauna Kea
     
-    # Set observer location (defaults to Mauna Kea if not provided)
-    lat = req_body.get('latitude', '19.8207')  # Mauna Kea latitude
-    lon = req_body.get('longitude', '155.4681')  # Mauna Kea longitude
-    
+    # Set observer location
     observer.lat = str(lat)
     observer.lon = str(lon)
-    observer.date = datetime.utcnow()
+    observer.date = datetime.now(timezone.utc)
     
-    # Calculate moon information
-    moon.compute(observer)
+    # Calculate moon information with error handling
+    try:
+        moon.compute(observer)
+    except (ValueError, ephem.Error) as e:
+        return func.HttpResponse(
+            json.dumps({"error": f"Failed to compute moon information: {str(e)}"}),
+            mimetype="application/json",
+            status_code=400
+        )
     
     # Calculate next moon phases
     next_new = ephem.next_new_moon(observer.date)
@@ -85,7 +98,7 @@ def moon(req: func.HttpRequest) -> func.HttpResponse:
         moon_data['moonrise_and_set'] = rise_set_info
     
     return func.HttpResponse(
-        json.dumps(moon_data, indent=2),
+        json.dumps(moon_data),
         mimetype="application/json",
         status_code=200
     )
