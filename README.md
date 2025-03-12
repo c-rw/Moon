@@ -1,16 +1,23 @@
-# Moon Information API
+# Celestial Bodies Information API
 
-An Azure Function API that provides detailed information about the Moon's position, phase, and timing of astronomical events. Built using Python and the `ephem` library.
+An Azure Function API that provides detailed information about celestial bodies, currently focusing on the Moon. This API uses multiple astronomical calculation libraries for enhanced precision and detailed information.
 
 ## Features
 
-- Current moon phase (percentage illuminated)
-- Next new moon and full moon dates
-- Moon's current position (altitude and azimuth in both degrees and radians)
-- Distance from Earth in kilometers
-- Current constellation
-- Moon rise and set times (when location provided)
-- Location-specific calculations
+- **Current moon phase** (percentage illuminated)
+- **Next new moon and full moon dates**
+- **Precise positioning** (altitude, azimuth, right ascension, declination)
+- **Distance from Earth** in kilometers and astronomical units
+- **Current constellation** with multiple determination methods
+- **Rise and set times** when location is provided
+- **Advanced viewing conditions** including atmospheric information
+
+## Libraries Used
+
+The API leverages three powerful astronomical libraries:
+- **`ephem`**: For basic planetary calculations, moon phase, and rise/set times
+- **`skyfield`**: For precise astronomical positioning and distance calculations
+- **`astropy`**: For advanced constellation determination and coordinate handling
 
 ## Prerequisites
 
@@ -23,8 +30,8 @@ An Azure Function API that provides detailed information about the Moon's positi
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/c-rw/Moon.git
-cd moon
+git clone https://github.com/yourusername/celestial-bodies-api.git
+cd celestial-bodies-api
 ```
 
 2. Create and activate a virtual environment:
@@ -71,12 +78,11 @@ curl -X POST \
 
 Note: Latitude must be between -90 and 90, longitude between -180 and 180.
 
-### Example Responses
-
-#### Basic Response (Without Location)
+### Example Response
 
 ```json
 {
+  "name": "moon",
   "current_phase": 82.61,
   "next_phases": [
     {
@@ -88,48 +94,44 @@ Note: Latitude must be between -90 and 90, longitude between -180 and 180.
       "date": "2025-02-12 13:53:19 UTC"
     }
   ],
-  "altitude": {
-    "degrees": -6.97,
-    "radians": "-0:06:57.6"
-  },
-  "azimuth": {
-    "degrees": 78.30,
-    "radians": "78:18:12.0"
-  },
-  "distance": "399337 km",
-  "constellation": "Leo",
-  "timestamp": "2025-01-18 02:59:09 UTC"
-}
-```
-
-#### Response with Location Data
-
-```json
-{
-  "current_phase": 82.61,
-  "next_phases": [
-    {
-      "phase": "New Moon",
-      "date": "2025-01-29 12:35:54 UTC"
+  "position": {
+    "altitude": {
+      "degrees": -6.97,
+      "radians": "-0:06:57.6"
     },
-    {
-      "phase": "Full Moon",
-      "date": "2025-02-12 13:53:19 UTC"
+    "azimuth": {
+      "degrees": 78.30,
+      "radians": "78:18:12.0"
+    },
+    "precise_altitude": -6.9694,
+    "precise_azimuth": 78.3033
+  },
+  "celestial_coordinates": {
+    "right_ascension": {
+      "hours": 10.8456,
+      "degrees": 162.6840
+    },
+    "declination": {
+      "degrees": 8.5723
     }
-  ],
-  "altitude": {
-    "degrees": -6.97,
-    "radians": "-0:06:57.6"
   },
-  "azimuth": {
-    "degrees": 78.30,
-    "radians": "78:18:12.0"
+  "distance": {
+    "km": 399337,
+    "au": 0.002669
   },
-  "distance": "399337 km",
   "constellation": "Leo",
+  "constellation_precise": "Leo",
+  "phase_precise": 82.59,
   "moonrise_and_set": {
     "next_moonrise": "2025-01-18 13:45:23 UTC",
     "next_moonset": "2025-01-19 02:12:45 UTC"
+  },
+  "viewing_conditions": {
+    "atmospheric_extinction": "Calculated based on altitude",
+    "best_viewing_time": "Based on maximum altitude"
+  },
+  "libration": {
+    "note": "Libration values available on request"
   },
   "observer": {
     "latitude": 35.7478,
@@ -139,39 +141,41 @@ Note: Latitude must be between -90 and 90, longitude between -180 and 180.
 }
 ```
 
-#### Error Response Example
-
-```json
-{
-  "error": "Invalid latitude or longitude values. Latitude must be between -90 and 90, longitude between -180 and 180."
-}
-```
-
 ## Response Fields
 
+- `name`: The celestial body name
 - `current_phase`: Percentage of the moon's visible disk that is illuminated (0-100)
 - `next_phases`: Upcoming new moon and full moon dates
-- `altitude`: Angular height above the horizon (negative values mean below horizon)
-  - `degrees`: Altitude in decimal degrees
-  - `radians`: Altitude in radians (traditional astronomy format)
-- `azimuth`: Direction along the horizon (0° = North, 90° = East, etc.)
-  - `degrees`: Azimuth in decimal degrees
-  - `radians`: Azimuth in radians (traditional astronomy format)
-- `distance`: Distance from Earth in kilometers
-- `constellation`: Current constellation the moon is in
+- `position`: Position in the sky from observer's perspective
+  - `altitude`: Angular height above the horizon (negative values mean below horizon)
+  - `azimuth`: Direction along the horizon (0° = North, 90° = East, etc.)
+  - `precise_altitude/azimuth`: Higher precision values from skyfield
+- `celestial_coordinates`: Position in the celestial sphere
+  - `right_ascension`: Position in hours (0-24) and degrees (0-360)
+  - `declination`: Angular distance from the celestial equator
+- `distance`: Distance from Earth in kilometers and astronomical units
+- `constellation`: Current constellation the body is in
+- `constellation_precise`: Constellation determined using astropy's more precise algorithms
+- `phase_precise`: Moon phase calculated with higher precision
+- `moonrise_and_set`: Next moonrise and moonset times (only with location)
+- `viewing_conditions`: Information about visibility and optimal viewing
+- `observer`: Location coordinates (only with location)
 - `timestamp`: UTC timestamp of the observation
-- `moonrise_and_set`: Next moonrise and moonset times (only included when location provided)
-- `observer`: Location coordinates (only included when location provided)
-  - `latitude`: Observer's latitude
-  - `longitude`: Observer's longitude
 
 ## Error Handling
 
 The API includes validation for:
-
 - Valid JSON input
 - Latitude and longitude format (must be valid numbers)
 - Latitude and longitude ranges (latitude: -90 to 90, longitude: -180 to 180)
+- Graceful handling of calculation errors from each library
+
+## Future Expansion
+
+The API is designed to be expanded to support other celestial bodies:
+- Mars
+- Jupiter
+- Other planets and objects in the solar system
 
 ## Deployment
 
