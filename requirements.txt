@@ -4,3 +4,6 @@
 
 azure-functions
 ephem
+skyfield
+astropy
+numpy
