@@ -1,6 +1,6 @@
 # Moon Information API
 
-An Azure Function API that provides detailed information about the Moon's position, phase, and timing of astronomical events. Built using Python and the `ephem` library.
+An Azure Function API that provides detailed information about the Moon's position, phase, and timing of astronomical events. Built using Python with the `ephem`, `skyfield`, and `astropy` libraries.
 
 ## Features
 
@@ -139,11 +139,23 @@ Note: Latitude must be between -90 and 90, longitude between -180 and 180.
 }
 ```
 
-#### Error Response Example
+#### Error Response Examples
 
 ```json
 {
   "error": "Invalid latitude or longitude values. Latitude must be between -90 and 90, longitude between -180 and 180."
+}
+```
+
+```json
+{
+  "error": "Latitude and longitude are required in POST requests"
+}
+```
+
+```json
+{
+  "error": "Invalid JSON in request body"
 }
 ```
 
@@ -172,6 +184,14 @@ The API includes validation for:
 - Valid JSON input
 - Latitude and longitude format (must be valid numbers)
 - Latitude and longitude ranges (latitude: -90 to 90, longitude: -180 to 180)
+
+## Implementation Details
+
+The API uses three primary libraries for astronomical calculations:
+
+- `ephem`: For basic planetary calculations, moon phase, and rise/set times
+- `skyfield`: For precise astronomical positioning
+- `astropy`: For constellation determination and coordinate handling
 
 ## Deployment
 
