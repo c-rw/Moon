@@ -4,6 +4,7 @@ import ephem
 from datetime import datetime, timezone
 import json
 import math
+from typing import Optional, Tuple, Dict, Any
 
 # Additional imports
 from skyfield import api
@@ -13,6 +14,8 @@ from astropy.time import Time
 import astropy.units as u
 from astropy.coordinates import get_constellation
 import numpy as np
+from celestial.moon import Moon
+from celestial.mars import Mars
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -39,120 +42,105 @@ SKYFIELD_BODIES = {
     # Add more planets as needed
 }
 
+def extract_location(req: func.HttpRequest) -> Tuple[Optional[float], Optional[float], Optional[Dict[str, Any]]]:
+    """
+    Extract and validate latitude and longitude from the request body.
+    Returns (lat, lon, error_dict). If error_dict is not None, an error occurred.
+    """
+    if req.method != "POST" or not req.get_body():
+        return None, None, None
+    try:
+        req_body = req.get_json()
+        if "latitude" in req_body and "longitude" in req_body:
+            try:
+                lat = float(req_body.get("latitude"))
+                lon = float(req_body.get("longitude"))
+                if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                    return None, None, {
+                        "error": "Invalid latitude or longitude values. Latitude must be between -90 and 90, longitude between -180 and 180."
+                    }
+                return lat, lon, None
+            except (ValueError, TypeError):
+                return None, None, {"error": "Latitude and longitude must be valid numbers."}
+        else:
+            return None, None, {"error": "Latitude and longitude must be provided in the request body."}
+    except ValueError:
+        return None, None, {"error": "Invalid JSON in request body."}
+
 @app.route(route="moon")
 def moon(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    HTTP endpoint for moon information.
+    Delegates to the modular celestial body handler.
+    """
     logging.info("Python HTTP trigger function processing moon information request.")
     return get_celestial_body_info(req, 'moon')
 
-def get_celestial_body_info(req: func.HttpRequest, body_name: str) -> func.HttpResponse:
-    """Generic function to get information about a celestial body"""
-    logging.info(f"Processing {body_name} information request.")
+@app.route(route="mars")
+def mars(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    HTTP endpoint for mars information.
+    Delegates to the modular celestial body handler.
+    """
+    logging.info("Python HTTP trigger function processing mars information request.")
+    return get_celestial_body_info(req, 'mars')
 
-    # Current time
+def get_celestial_body_info(req: func.HttpRequest, body_name: str) -> func.HttpResponse:
+    """
+    Generic function to get information about a celestial body.
+    Handles input validation, error handling, and response formatting.
+    Dispatches to the correct CelestialBody subclass based on body_name.
+    """
+    logging.info(f"Processing {body_name} information request.")
     current_time = datetime.now(timezone.utc)
 
-    # Create ephem objects
-    ephem_body_class = EPHEM_BODIES.get(body_name)
-    if not ephem_body_class:
-        return func.HttpResponse(
-            json.dumps({"error": f"Unsupported celestial body: {body_name}"}),
-            mimetype="application/json",
-            status_code=400,
-        )
-    
-    ephem_body = ephem_body_class()
+    # Dispatch to the correct body class
+    if body_name == 'moon':
+        body = Moon()
+    elif body_name == 'mars':
+        body = Mars()
+    else:
+        return error_response(f"Unsupported celestial body: {body_name}", 400)
+
+    # Create a new observer for this request
+    observer = body.ephem_body._observer = body.ephem_body._Ephem__observer = None  # Ensure no old observer
+    import ephem
     observer = ephem.Observer()
     observer.date = current_time
 
-    # Get optional location parameters
-    has_location = False
-    lat = None
-    lon = None
-    
-    try:
-        if req.method == "POST" and req.get_body():
-            try:
-                req_body = req.get_json()
+    # Extract and validate location from the request
+    lat, lon, loc_error = extract_location(req)
+    has_location = lat is not None and lon is not None and loc_error is None
+    if loc_error:
+        return error_response(loc_error["error"], 400)
+    if has_location:
+        observer.lat = str(lat)
+        observer.lon = str(lon)
 
-                # Check if both latitude and longitude are provided
-                if "latitude" in req_body and "longitude" in req_body:
-                    # Validate latitude and longitude
-                    try:
-                        lat = float(req_body.get("latitude"))
-                        lon = float(req_body.get("longitude"))
-
-                        # Check if values are in valid ranges
-                        if -90 <= lat <= 90 and -180 <= lon <= 180:
-                            observer.lat = str(lat)
-                            observer.lon = str(lon)
-                            has_location = True
-                        else:
-                            return func.HttpResponse(
-                                json.dumps(
-                                    {
-                                        "error": "Invalid latitude or longitude values. Latitude must be between -90 and 90, longitude between -180 and 180."
-                                    }
-                                ),
-                                mimetype="application/json",
-                                status_code=400,
-                            )
-                    except (ValueError, TypeError):
-                        return func.HttpResponse(
-                            json.dumps(
-                                {
-                                    "error": "Latitude and longitude must be valid numbers."
-                                }
-                            ),
-                            mimetype="application/json",
-                            status_code=400,
-                        )
-            except ValueError:
-                return func.HttpResponse(
-                    json.dumps({"error": "Invalid JSON in request body."}),
-                    mimetype="application/json",
-                    status_code=400,
-                )
-    except Exception as e:
-        logging.error(f"Error processing request: {str(e)}")
-        
-    # Calculate unified celestial body information
     try:
-        # Get basic information using ephem
-        body_data = get_basic_info(observer, ephem_body, body_name)
-        
-        # Enhance with more precise position data from skyfield
-        enhance_with_skyfield(body_data, body_name, current_time, lat, lon, has_location)
-        
-        # Add constellation and additional data from astropy
-        enhance_with_astropy(body_data, body_name, current_time, lat, lon, has_location)
-        
-        # Add timestamp
+        # Get basic info and enhance with skyfield/astropy
+        body_data = body.get_basic_info(observer)
+        body.enhance_with_skyfield(body_data, current_time, lat, lon, has_location)
+        body.enhance_with_astropy(body_data, current_time, lat, lon, has_location)
         body_data["timestamp"] = current_time.strftime("%Y-%m-%d %H:%M:%S UTC")
-        
-        # Add observer info if location was provided
         if has_location:
-            body_data["observer"] = {
-                "latitude": lat,
-                "longitude": lon
-            }
-            
-            # Add rise and set times
-            add_rise_set_times(body_data, observer, ephem_body, body_name, has_location)
-        
-        return func.HttpResponse(
-            json.dumps(body_data), mimetype="application/json", status_code=200
-        )
-        
+            body_data["observer"] = {"latitude": lat, "longitude": lon}
+            body.add_rise_set_times(body_data, observer, has_location)
+        return func.HttpResponse(json.dumps(body_data), mimetype="application/json", status_code=200)
     except Exception as e:
         logging.error(f"Error calculating {body_name} information: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": f"Failed to compute {body_name} information: {str(e)}"}),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return error_response(f"Failed to compute {body_name} information: {str(e)}", 500)
 
-def get_basic_info(observer, body, body_name):
-    """Get basic information using ephem"""
+def error_response(message: str, status_code: int = 400) -> func.HttpResponse:
+    """
+    Standardized error response helper for returning JSON error messages.
+    """
+    return func.HttpResponse(json.dumps({"error": message}), mimetype="application/json", status_code=status_code)
+
+def get_basic_info(observer: Any, body: Any, body_name: str) -> dict:
+    """
+    Get basic information using ephem.
+    """
     try:
         body.compute(observer)
         
@@ -207,8 +195,10 @@ def get_basic_info(observer, body, body_name):
         logging.error(f"Error in basic {body_name} calculations: {str(e)}")
         raise
 
-def enhance_with_skyfield(body_data, body_name, current_time, lat, lon, has_location):
-    """Enhance data with skyfield calculations"""
+def enhance_with_skyfield(body_data: dict, body_name: str, current_time: datetime, lat: Optional[float], lon: Optional[float], has_location: bool) -> None:
+    """
+    Enhance data with skyfield calculations.
+    """
     try:
         # Get the skyfield body object
         skyfield_body = SKYFIELD_BODIES.get(body_name)
@@ -271,8 +261,10 @@ def enhance_with_skyfield(body_data, body_name, current_time, lat, lon, has_loca
         logging.error(f"Error enhancing {body_name} with skyfield: {str(e)}")
         body_data["skyfield_error"] = str(e)
 
-def enhance_with_astropy(body_data, body_name, current_time, lat, lon, has_location):
-    """Enhance data with astropy calculations"""
+def enhance_with_astropy(body_data: dict, body_name: str, current_time: datetime, lat: Optional[float], lon: Optional[float], has_location: bool) -> None:
+    """
+    Enhance data with astropy calculations.
+    """
     try:
         # Convert to astropy time
         t = Time(current_time)
@@ -339,8 +331,10 @@ def enhance_with_astropy(body_data, body_name, current_time, lat, lon, has_locat
         logging.error(f"Error enhancing {body_name} with astropy: {str(e)}")
         body_data["astropy_error"] = str(e)
 
-def add_rise_set_times(body_data, observer, body, body_name, has_location):
-    """Add rise and set times to data"""
+def add_rise_set_times(body_data: dict, observer: Any, body: Any, body_name: str, has_location: bool) -> None:
+    """
+    Add rise and set times to data if location is provided.
+    """
     if not has_location:
         return
         
